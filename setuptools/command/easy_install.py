@@ -27,6 +27,7 @@ import zipimport
 import shutil
 import tempfile
 import zipfile
+import platform
 import re
 import stat
 import random
@@ -2236,7 +2237,9 @@ def get_win_launcher(type):
     Returns the executable as a byte string.
     """
     launcher_fn = '%s.exe' % type
-    if is_64bit():
+    if platform.machine().lower() == 'arm64':
+        launcher_fn = launcher_fn.replace(".", "-arm64.")
+    elif is_64bit():
         launcher_fn = launcher_fn.replace(".", "-64.")
     else:
         launcher_fn = launcher_fn.replace(".", "-32.")

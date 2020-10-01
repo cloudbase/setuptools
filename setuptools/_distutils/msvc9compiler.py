@@ -54,6 +54,7 @@ else:
 PLAT_TO_VCVARS = {
     'win32' : 'x86',
     'win-amd64' : 'amd64',
+    'win-arm64' : 'arm64',
 }
 
 class Reg:
@@ -216,7 +217,6 @@ def removeDuplicates(variable):
 
 def find_vcvarsall(version):
     """Find the vcvarsall.bat file
-
     At first it tries to find the productdir of VS 2008 in the registry. If
     that fails it falls back to the VS90COMNTOOLS env var.
     """
@@ -249,10 +249,10 @@ def find_vcvarsall(version):
     log.debug("Unable to find vcvarsall.bat")
     return None
 
-def query_vcvarsall(version, arch="x86"):
+def query_vcvarsall_arm(version, arch="x86"):
     """Launch vcvarsall.bat and read the settings from its environment
     """
-    vcvarsall = find_vcvarsall(version)
+    vcvarsall = 'C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Auxiliary/Build/vcvarsall.bat'
     interesting = {"include", "lib", "libpath", "path"}
     result = {}
 
@@ -342,7 +342,7 @@ class MSVCCompiler(CCompiler) :
         if plat_name is None:
             plat_name = get_platform()
         # sanity check for platforms to prevent obscure errors later.
-        ok_plats = 'win32', 'win-amd64'
+        ok_plats = 'win32', 'win-amd64', 'win-arm64'
         if plat_name not in ok_plats:
             raise DistutilsPlatformError("--plat-name must be one of %s" %
                                          (ok_plats,))
@@ -368,23 +368,21 @@ class MSVCCompiler(CCompiler) :
                 plat_spec = PLAT_TO_VCVARS[get_platform()] + '_' + \
                             PLAT_TO_VCVARS[plat_name]
 
-            vc_env = query_vcvarsall(VERSION, plat_spec)
-
-            self.__paths = vc_env['path'].split(os.pathsep)
+            vc_env = query_vcvarsall_arm(VERSION, plat_name)
+            self.__paths = vc_env['path'].replace('HostX64', 'HostX86').split(os.pathsep)
             os.environ['lib'] = vc_env['lib']
             os.environ['include'] = vc_env['include']
-
             if len(self.__paths) == 0:
                 raise DistutilsPlatformError("Python was built with %s, "
                        "and extensions need to be built with the same "
                        "version of the compiler, but it isn't installed."
                        % self.__product)
 
-            self.cc = self.find_exe("cl.exe")
-            self.linker = self.find_exe("link.exe")
-            self.lib = self.find_exe("lib.exe")
-            self.rc = self.find_exe("rc.exe")   # resource compiler
-            self.mc = self.find_exe("mc.exe")   # message compiler
+            self.cc = self.find_exe("cl.exe").replace('HostX64', 'Hostx86')
+            self.linker = self.find_exe("link.exe").replace('HostX64', 'Hostx86')
+            self.lib = self.find_exe("lib.exe").replace('HostX64', 'Hostx86')
+            self.rc = self.find_exe("rc.exe").replace('x64', 'arm64')   # resource compiler
+            self.mc = self.find_exe("mc.exe").replace('x64', 'arm64')   # message compiler
             #self.set_path_env_var('lib')
             #self.set_path_env_var('include')
 
@@ -633,7 +631,10 @@ class MSVCCompiler(CCompiler) :
                 ld_args[:0] = extra_preargs
             if extra_postargs:
                 ld_args.extend(extra_postargs)
-
+            ld_args_arm = []
+            for ind in ld_args:
+                ld_args_arm += [ind.replace(r'\um\x86', r'\um\arm64').replace("0x1", "0x11")]
+            ld_args = list(ld_args_arm)
             self.mkpath(os.path.dirname(output_filename))
             try:
                 self.spawn([self.linker] + ld_args)
